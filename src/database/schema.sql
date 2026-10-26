@@ -1,0 +1,6 @@
+PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, login TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('Administrator','Kierownik','Redaktor','Pracownik','Czytelnik')), password_hash TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 1, otp_expires_at INTEGER, password_changed_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS password_history (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, hash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), policy_enabled INTEGER NOT NULL, min_length INTEGER NOT NULL, password_days INTEGER NOT NULL, idle_minutes INTEGER NOT NULL, banned_words TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL, published INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, data TEXT NOT NULL, expires INTEGER NOT NULL, user_id INTEGER);

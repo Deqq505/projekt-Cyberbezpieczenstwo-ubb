@@ -1,0 +1,21 @@
+{
+  "name": "portal-zespolu-wariant-10",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Moduł 1 — identyfikacja, uwierzytelnianie i autoryzacja, wariant 10",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "reset-admin": "node scripts/reset-admin.js",
+    "pack": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-project.ps1"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2"
+  }
+}

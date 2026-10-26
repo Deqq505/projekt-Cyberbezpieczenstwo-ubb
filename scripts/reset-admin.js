@@ -1,0 +1,20 @@
+import { DatabaseSync } from 'node:sqlite';
+import { randomInt } from 'node:crypto';
+import argon2 from 'argon2';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { DATA_DIR } from '../src/config/paths.js';
+const dbPath = path.join(DATA_DIR, 'portal.sqlite');
+if (!existsSync(dbPath)) { console.error('Najpierw uruchom aplikację, aby utworzyć bazę.'); process.exit(1); }
+const db = new DatabaseSync(dbPath);
+const words = ['kamyk','rower','sosna','zamek','pociag','chmura','lampa','koral','kompas','harfa','bilet','rzeka','sokol','zegar','perla','atlas'];
+const password = Array.from({length:3}, () => words[randomInt(words.length)]).join('-') + '-' + String(randomInt(100)).padStart(2,'0');
+const user = db.prepare("SELECT * FROM users WHERE login='ADMIN'").get();
+const h = await argon2.hash(password, { type: argon2.argon2id, memoryCost:19456, timeCost:2, parallelism:1 });
+db.exec('BEGIN');
+db.prepare('INSERT INTO password_history (user_id,hash) VALUES (?,?)').run(user.id, user.password_hash);
+db.prepare('UPDATE users SET password_hash=?,must_change=1,blocked=0,otp_expires_at=? WHERE id=?').run(h,Date.now()+12*3600000,user.id);
+db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
+db.exec('COMMIT');
+db.close();
+console.log(`Login: ADMIN\nNowe hasło jednorazowe: ${password}\nWażność: 12 godzin.`);
