@@ -85,7 +85,7 @@ export async function registerAuthRoutes(app, { db, getSettings, requireAuth, pu
   
   app.post('/api/password', requireAuth, async (req, res) => {
     const { oldPassword, newPassword, confirmation, turnstile } = req.body ?? {};
-    
+  
     if (!turnstile || typeof turnstile !== 'string') return fail(res, 400, 'Zaznacz, że nie jesteś robotem (CAPTCHA).');
     const isHuman = await verifyTurnstile(turnstile, req.ip);
     if (!isHuman) return fail(res, 400, 'Weryfikacja CAPTCHA nie powiodła się.');
@@ -113,5 +113,5 @@ export async function registerAuthRoutes(app, { db, getSettings, requireAuth, pu
     req.session.destroy(() => { res.clearCookie('portal.sid'); res.json({ message: 'Hasło zostało zmienione. Zaloguj się nowym hasłem.' }); });
   });
 
-  return null;
+  return accountLocks;
 }
