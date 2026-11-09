@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { DATA_DIR } from './config/paths.js';

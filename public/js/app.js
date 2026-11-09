@@ -1,3 +1,5 @@
+const SITE_KEY = '0x4AAAAAAF57KIBp2l8aZ8oI';
+
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app'), modal = $('#modal');
 let state = null, view = 'notes', users = [], notes = [], idleTimer, toastTimer, lastActivity = 0;
@@ -52,18 +54,66 @@ async function activity() {
   try { const r = await api('/activity', 'POST'); armIdle(r.idleExpiresAt); } catch {}
 }
 for (const event of ['pointerdown','keydown','scroll']) document.addEventListener(event, activity, { passive: true });
+
+function mountTurnstile(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '<span class="muted" style="font-size:12px;">Ładowanie zabezpieczenia...</span>';
+  let attempts = 0;
+  const check = setInterval(() => {
+    attempts++;
+    if (window.turnstile) {
+      clearInterval(check);
+      el.innerHTML = '';
+      try { turnstile.render('#' + containerId, { sitekey: SITE_KEY }); } catch (err) { console.error(err); }
+    } else if (attempts > 20) {
+      clearInterval(check);
+      el.innerHTML = '<span style="color:red;font-size:12px;font-weight:bold;text-align:center;">BŁĄD: Zablokowano skrypt CAPTCHA. Wyłącz AdBlocka, tarcze w przeglądarce i odśwież stronę (CMD + SHIFT + R).</span>';
+    }
+  }, 100);
+}
+
 function bindForm(id, handler) {
   $(id).addEventListener('submit', async e => {
     e.preventDefault(); const form = e.currentTarget, button = $('[type=submit]', form); setError(form, ''); button.disabled = true;
-    try { await handler(Object.fromEntries(new FormData(form)), form); } catch (error) { setError(form, error.message); } finally { button.disabled = false; }
+    try {
+      const data = Object.fromEntries(new FormData(form));
+      if (data['cf-turnstile-response']) data.turnstile = data['cf-turnstile-response'];
+      await handler(data, form);
+    } catch (error) {
+      setError(form, error.message);
+      if (window.turnstile) turnstile.reset();
+    } finally { button.disabled = false; }
   });
 }
+
 function renderLogin(message = '') {
-  app.innerHTML = `<div class="login-page"><aside class="login-art">${brand()}<div class="orbit"></div><div class="login-copy"><div class="eyebrow">Twoja przestrzeń do pracy</div><h1>Dobry zespół.<br>Wspólne miejsce.</h1><p>Notatki, ludzie i bezpieczny dostęp.<br>Wszystko, czego potrzebujesz, w jednym miejscu.</p></div><div class="login-footer">${icon('shield')} Dostęp tylko dla członków zespołu</div></aside><main class="login-main"><div class="login-box">${brand('mobile-brand')}<div class="login-icon">${icon('lock')}</div><h1>Dobrze Cię widzieć</h1><p class="muted">Zaloguj się do swojej przestrzeni zespołu.</p><form id="login-form"><div class="error" ${message ? '' : 'hidden'}>${esc(message)}</div><div class="field"><label for="login">Login</label><input id="login" name="login" autocomplete="username" required maxlength="40" placeholder="Twój login" autofocus></div>${passwordField('password','Hasło','current-password')}<button class="btn full" type="submit">Zaloguj się ${icon('arrow')}</button></form><div class="login-bottom">Pierwsze logowanie lub problem z dostępem?<br><strong>Skontaktuj się z administratorem zespołu.</strong></div></div></main></div>`;
+  app.innerHTML = `<div class="login-page"><aside class="login-art">${brand()}<div class="orbit"></div><div class="login-copy"><div class="eyebrow">Twoja przestrzeń do pracy</div><h1>Dobry zespół.<br>Wspólne miejsce.</h1><p>Notatki, ludzie i bezpieczny dostęp.<br>Wszystko, czego potrzebujesz, w jednym miejscu.</p></div><div class="login-footer">${icon('shield')} Dostęp tylko dla członków zespołu</div></aside><main class="login-main"><div class="login-box">${brand('mobile-brand')}<div class="login-icon">${icon('lock')}</div><h1>Dobrze Cię widzieć</h1><p class="muted">Zaloguj się do swojej przestrzeni zespołu.</p><form id="login-form"><div class="error" ${message ? '' : 'hidden'}>${esc(message)}</div>
+  
+  
+  <input type="text" name="website" tabindex="-1" autocomplete="off" style="position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; z-index: -1;">
+  
+  <div class="field"><label for="login">Login</label><input id="login" name="login" autocomplete="username" required maxlength="40" placeholder="Twój login" autofocus></div>${passwordField('password','Hasło','current-password')}
+  
+
+  <div id="cf-login" style="margin: 15px 0; min-height: 65px; display: flex; justify-content: center; align-items: center;"></div>
+  
+  <button class="btn full" type="submit">Zaloguj się ${icon('arrow')}</button></form><div class="login-bottom">Pierwsze logowanie lub problem z dostępem?<br><strong>Skontaktuj się z administratorem zespołu.</strong></div></div></main></div>`;
+  
+  mountTurnstile('cf-login');
+  
   bindForm('#login-form', async data => { state = await api('/login','POST',data); armIdle(state.idleExpiresAt); view = state.user.role === 'Administrator' ? 'users' : 'notes'; if (state.mustChange) renderChange(); else await renderShell(); });
 }
-function passwordForm() { return `<form id="password-form"><div class="error" hidden></div>${passwordField('oldPassword','Obecne hasło','current-password')}${passwordField('newPassword','Nowe hasło')}${passwordField('confirmation','Powtórz nowe hasło')}<p class="hint">Minimum ${state.settings.minLength} znaków. Hasło musi różnić się od wszystkich poprzednich.${state.settings.policyEnabled ? ' Nie może zawierać słów ze słownika organizacji.' : ''}</p><button type="submit" class="btn full">Zmień hasło ${icon('arrow')}</button></form>`; }
-function bindPassword() { bindForm('#password-form', async data => { const r = await api('/password','POST',data); state = null; clearTimeout(idleTimer); renderLogin(); toast(r.message); }); }
+
+function passwordForm() { return `<form id="password-form"><div class="error" hidden></div>${passwordField('oldPassword','Obecne hasło','current-password')}${passwordField('newPassword','Nowe hasło')}${passwordField('confirmation','Powtórz nowe hasło')}<p class="hint">Minimum ${state.settings.minLength} znaków. Hasło musi różnić się od wszystkich poprzednich.${state.settings.policyEnabled ? ' Nie może zawierać słów ze słownika organizacji.' : ''}</p>
+  <div id="cf-password" style="margin: 15px 0; min-height: 65px; display: flex; justify-content: center; align-items: center;"></div>
+  <button type="submit" class="btn full">Zmień hasło ${icon('arrow')}</button></form>`; }
+
+function bindPassword() {
+  mountTurnstile('cf-password');
+  bindForm('#password-form', async data => { const r = await api('/password','POST',data); state = null; clearTimeout(idleTimer); renderLogin(); toast(r.message); });
+}
+
 function renderChange() {
   app.innerHTML = `<main class="change-page"><div class="change-box">${brand()}<div class="eyebrow">Bezpieczeństwo konta</div><h1>Ustaw nowe hasło</h1><p>Witaj, ${esc(state.user.name)}. Przed przejściem dalej zmień ${state.user.mustChange ? 'hasło jednorazowe' : 'hasło, którego ważność upłynęła'}.</p>${passwordForm()}<button class="btn text full" data-action="logout">Wyloguj się</button></div></main>`; bindPassword();
 }
@@ -71,7 +121,7 @@ const titles = { users: 'Użytkownicy', settings: 'Polityka haseł', notes: 'Not
 async function renderShell() {
   const isAdmin = state.user.role === 'Administrator';
   if (!isAdmin && ['users','settings'].includes(view)) view = 'notes';
-  app.innerHTML = `<div class="shell"><aside class="sidebar">${brand()}<div class="nav-label">Przestrzeń zespołu</div><nav class="nav" aria-label="Menu główne">${[['notes','notes'],...(isAdmin ? [['users','users'],['settings','shield']] : []),['account','user']].map(([id, symbol]) => `<button data-view="${id}" class="${id === view ? 'active' : ''}" ${id === view ? 'aria-current="page"' : ''}>${icon(symbol)}${titles[id]}</button>`).join('')}</nav><div class="sidebar-foot"><strong>Portal zespołu</strong><br>Moduł 1 · Wariant 10</div></aside><header class="topbar"><div class="breadcrumb"><span>Przestrzeń zespołu</span><span>/</span><strong>${titles[view]}</strong></div><div class="user-menu"><div class="avatar">${esc(initials(state.user.name))}</div><div class="user-info"><strong>${esc(state.user.name)}</strong><span>${esc(state.user.role)}</span></div><div class="logout"><button class="icon-btn" data-action="logout" title="Wyloguj się" aria-label="Wyloguj się">${icon('logout')}</button></div></div></header><main class="main" id="main"><p class="muted">Wczytywanie…</p></main></div>`;
+  app.innerHTML = `<div class="shell"><aside class="sidebar">${brand()}<div class="nav-label">Przestrzeń zespołu</div><nav class="nav" aria-label="Menu główne">${[['notes','notes'],...(isAdmin ? [['users','users'],['settings','shield']] : []),['account','user']].map(([id, symbol]) => `<button data-view="${id}" class="${id === view ? 'active' : ''}" ${id === view ? 'aria-current="page"' : ''}>${icon(symbol)}${titles[id]}</button>`).join('')}</nav><div class="sidebar-foot"><strong>Portal zespołu</strong><br>Moduł 2 · Wariant 10</div></aside><header class="topbar"><div class="breadcrumb"><span>Przestrzeń zespołu</span><span>/</span><strong>${titles[view]}</strong></div><div class="user-menu"><div class="avatar">${esc(initials(state.user.name))}</div><div class="user-info"><strong>${esc(state.user.name)}</strong><span>${esc(state.user.role)}</span></div><div class="logout"><button class="icon-btn" data-action="logout" title="Wyloguj się" aria-label="Wyloguj się">${icon('logout')}</button></div></div></header><main class="main" id="main"><p class="muted">Wczytywanie…</p></main></div>`;
   try {
     if (view === 'users') await renderUsers();
     if (view === 'settings') renderSettings();
