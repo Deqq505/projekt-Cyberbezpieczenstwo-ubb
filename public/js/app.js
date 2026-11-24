@@ -89,19 +89,11 @@ function bindForm(id, handler) {
 
 function renderLogin(message = '') {
   app.innerHTML = `<div class="login-page"><aside class="login-art">${brand()}<div class="orbit"></div><div class="login-copy"><div class="eyebrow">Twoja przestrzeń do pracy</div><h1>Dobry zespół.<br>Wspólne miejsce.</h1><p>Notatki, ludzie i bezpieczny dostęp.<br>Wszystko, czego potrzebujesz, w jednym miejscu.</p></div><div class="login-footer">${icon('shield')} Dostęp tylko dla członków zespołu</div></aside><main class="login-main"><div class="login-box">${brand('mobile-brand')}<div class="login-icon">${icon('lock')}</div><h1>Dobrze Cię widzieć</h1><p class="muted">Zaloguj się do swojej przestrzeni zespołu.</p><form id="login-form"><div class="error" ${message ? '' : 'hidden'}>${esc(message)}</div>
-  
-  
   <input type="text" name="website" tabindex="-1" autocomplete="off" style="position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; z-index: -1;">
-  
   <div class="field"><label for="login">Login</label><input id="login" name="login" autocomplete="username" required maxlength="40" placeholder="Twój login" autofocus></div>${passwordField('password','Hasło','current-password')}
-  
-
   <div id="cf-login" style="margin: 15px 0; min-height: 65px; display: flex; justify-content: center; align-items: center;"></div>
-  
   <button class="btn full" type="submit">Zaloguj się ${icon('arrow')}</button></form><div class="login-bottom">Pierwsze logowanie lub problem z dostępem?<br><strong>Skontaktuj się z administratorem zespołu.</strong></div></div></main></div>`;
-  
   mountTurnstile('cf-login');
-  
   bindForm('#login-form', async data => { state = await api('/login','POST',data); armIdle(state.idleExpiresAt); view = state.user.role === 'Administrator' ? 'users' : 'notes'; if (state.mustChange) renderChange(); else await renderShell(); });
 }
 
@@ -117,20 +109,33 @@ function bindPassword() {
 function renderChange() {
   app.innerHTML = `<main class="change-page"><div class="change-box">${brand()}<div class="eyebrow">Bezpieczeństwo konta</div><h1>Ustaw nowe hasło</h1><p>Witaj, ${esc(state.user.name)}. Przed przejściem dalej zmień ${state.user.mustChange ? 'hasło jednorazowe' : 'hasło, którego ważność upłynęła'}.</p>${passwordForm()}<button class="btn text full" data-action="logout">Wyloguj się</button></div></main>`; bindPassword();
 }
-const titles = { users: 'Użytkownicy', settings: 'Polityka haseł', notes: 'Notatki zespołu', account: 'Moje konto' };
+const titles = { users: 'Użytkownicy', settings: 'Polityka haseł', logs: 'Dziennik zdarzeń', notes: 'Notatki zespołu', account: 'Moje konto' };
 async function renderShell() {
   const isAdmin = state.user.role === 'Administrator';
-  if (!isAdmin && ['users','settings'].includes(view)) view = 'notes';
-  app.innerHTML = `<div class="shell"><aside class="sidebar">${brand()}<div class="nav-label">Przestrzeń zespołu</div><nav class="nav" aria-label="Menu główne">${[['notes','notes'],...(isAdmin ? [['users','users'],['settings','shield']] : []),['account','user']].map(([id, symbol]) => `<button data-view="${id}" class="${id === view ? 'active' : ''}" ${id === view ? 'aria-current="page"' : ''}>${icon(symbol)}${titles[id]}</button>`).join('')}</nav><div class="sidebar-foot"><strong>Portal zespołu</strong><br>Moduł 2 · Wariant 10</div></aside><header class="topbar"><div class="breadcrumb"><span>Przestrzeń zespołu</span><span>/</span><strong>${titles[view]}</strong></div><div class="user-menu"><div class="avatar">${esc(initials(state.user.name))}</div><div class="user-info"><strong>${esc(state.user.name)}</strong><span>${esc(state.user.role)}</span></div><div class="logout"><button class="icon-btn" data-action="logout" title="Wyloguj się" aria-label="Wyloguj się">${icon('logout')}</button></div></div></header><main class="main" id="main"><p class="muted">Wczytywanie…</p></main></div>`;
+  if (!isAdmin && ['users','settings','logs'].includes(view)) view = 'notes';
+  app.innerHTML = `<div class="shell"><aside class="sidebar">${brand()}<div class="nav-label">Przestrzeń zespołu</div><nav class="nav" aria-label="Menu główne">${[['notes','notes'],...(isAdmin ? [['users','users'],['settings','shield'],['logs','clock']] : []),['account','user']].map(([id, symbol]) => `<button data-view="${id}" class="${id === view ? 'active' : ''}" ${id === view ? 'aria-current="page"' : ''}>${icon(symbol)}${titles[id]}</button>`).join('')}</nav><div class="sidebar-foot"><strong>Portal zespołu</strong><br>Moduł 3 · Wariant 10</div></aside><header class="topbar"><div class="breadcrumb"><span>Przestrzeń zespołu</span><span>/</span><strong>${titles[view]}</strong></div><div class="user-menu"><div class="avatar">${esc(initials(state.user.name))}</div><div class="user-info"><strong>${esc(state.user.name)}</strong><span>${esc(state.user.role)}</span></div><div class="logout"><button class="icon-btn" data-action="logout" title="Wyloguj się" aria-label="Wyloguj się">${icon('logout')}</button></div></div></header><main class="main" id="main"><p class="muted">Wczytywanie…</p></main></div>`;
   try {
     if (view === 'users') await renderUsers();
     if (view === 'settings') renderSettings();
+    if (view === 'logs') await renderLogs();
     if (view === 'notes') await renderNotes();
     if (view === 'account') renderAccount();
+    if (isAdmin) await showAlertsBanner();
   } catch(e) { if ($('#main')) $('#main').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
+async function showAlertsBanner() {
+  try {
+    const alerts = await api('/admin/alerts');
+    const unread = alerts.filter(a => !a.acknowledged);
+    if (!unread.length) return;
+    const container = document.createElement('div');
+    container.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;';
+    container.innerHTML = `<strong>Alerty bezpieczeństwa (${unread.length}):</strong>` + unread.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:6px;"><span>[${esc(a.timestamp)}] ${esc(a.message)}</span><button class="btn secondary small" data-action="ack-alert" data-id="${a.id}">Potwierdź</button></div>`).join('');
+    $('#main').prepend(container);
+  } catch {}
+}
 const footer = () => `<footer class="page-footer"><span>Portal zespołu · Wariant 10</span><span class="secure-label">${icon('shield')} Automatyczne wylogowanie po ${state.settings.idleMinutes} min bezczynności</span></footer>`;
-const heading = (title, subtitle, button = '') => `<div class="page-heading"><div><div class="eyebrow">${view === 'users' || view === 'settings' ? 'Administracja' : 'Przestrzeń zespołu'}</div><h1>${title}</h1><p>${subtitle}</p></div>${button}</div>`;
+const heading = (title, subtitle, button = '') => `<div class="page-heading"><div><div class="eyebrow">${['users','settings','logs'].includes(view) ? 'Administracja' : 'Przestrzeń zespołu'}</div><h1>${title}</h1><p>${subtitle}</p></div>${button}</div>`;
 async function renderUsers() {
   users = await api('/admin/users');
   $('#main').innerHTML = `${heading('Użytkownicy','Zarządzaj kontami i dostępem do przestrzeni zespołu.',`<button class="btn" data-action="add-user">${icon('plus')}Dodaj użytkownika</button>`)}<div class="stats"><div class="stat"><div><p>Wszyscy użytkownicy</p><strong>${users.length}</strong></div><span class="stat-icon">${icon('users')}</span></div><div class="stat"><div><p>Aktywne konta</p><strong>${users.filter(u => !u.blocked).length}</strong></div><span class="stat-icon green">${icon('check')}</span></div><div class="stat"><div><p>Zablokowane konta</p><strong>${users.filter(u => u.blocked).length}</strong></div><span class="stat-icon orange">${icon('lock')}</span></div></div><section class="panel"><div class="panel-head"><h2>Członkowie zespołu <span>${users.length}</span></h2><div class="filters"><div class="search">${icon('search')}<input type="search" id="search-users" placeholder="Szukaj użytkownika…" aria-label="Szukaj użytkownika"></div><select id="filter-role" aria-label="Filtruj według roli"><option value="">Wszystkie role</option>${roles.map(r => `<option>${r}</option>`).join('')}</select></div></div><div class="table-scroll"><table><thead><tr><th>Użytkownik</th><th>Rola</th><th>Status</th><th>Hasło</th><th>Akcje</th></tr></thead><tbody id="user-rows"></tbody></table></div><div class="table-footer"><span id="user-count"></span><span>Uprawnienia według przypisanej roli</span></div></section>${footer()}`;
@@ -141,6 +146,29 @@ function drawUsers() {
   const filtered = users.filter(u => (!role || u.role === role) && `${u.name} ${u.login}`.toLocaleLowerCase('pl').includes(search));
   $('#user-rows').innerHTML = filtered.map(u => `<tr><td><div class="person"><span class="avatar">${esc(initials(u.name))}</span><div><strong>${esc(u.name)}</strong><small>${esc(u.login)}</small></div></div></td><td><span class="role ${u.role === 'Administrator' ? 'admin' : ''}">${u.role}</span></td><td><span class="status ${u.blocked ? 'blocked' : ''}">${u.blocked ? 'Zablokowane' : 'Aktywne'}</span></td><td><span class="${u.mustChange ? 'status pending' : ''}">${u.mustChange ? (u.otpExpiresAt < Date.now() ? 'Jednorazowe wygasło' : 'Do zmiany') : 'Ustawione'}</span></td><td><div class="actions"><button class="icon-btn" data-action="edit-user" data-id="${u.id}" title="Edytuj konto" aria-label="Edytuj konto ${esc(u.login)}">${icon('edit')}</button>${u.id !== state.user.id ? `<button class="icon-btn" data-action="reset-user" data-id="${u.id}" title="Resetuj hasło" aria-label="Resetuj hasło ${esc(u.login)}">${icon('key')}</button>` : ''}${u.login !== 'ADMIN' && u.id !== state.user.id ? `<button class="icon-btn" data-action="block-user" data-id="${u.id}" title="${u.blocked ? 'Odblokuj' : 'Zablokuj'} konto" aria-label="${u.blocked ? 'Odblokuj' : 'Zablokuj'} ${esc(u.login)}">${icon(u.blocked ? 'check' : 'lock')}</button><button class="icon-btn" data-action="delete-user" data-id="${u.id}" title="Usuń konto" aria-label="Usuń konto ${esc(u.login)}">${icon('trash')}</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nie znaleziono użytkowników.</td></tr>';
   $('#user-count').textContent = `Wyświetlono ${filtered.length} z ${users.length} kont`;
+}
+async function renderLogs() {
+  const actions = ['LOGIN','LOGIN_FAIL','LOGOUT','ACCOUNT_LOCK','PASSWORD_CHANGE','PASSWORD_RESET','USER_CREATE','USER_UPDATE','USER_BLOCK','USER_UNBLOCK','USER_DELETE','ROLE_CHANGE','SETTINGS_UPDATE','ACCESS_DENIED','HONEYTOKEN','LOG_EXPORT','LOG_VERIFY','ALERT'];
+  $('#main').innerHTML = `${heading('Dziennik zdarzeń','Rejestr zdarzeń bezpieczeństwa z łańcuchem SHA-512.',`<div style="display:flex;gap:8px;"><button class="btn secondary" data-action="verify-logs">${icon('shield')}Weryfikuj integralność</button><button class="btn" data-action="export-logs">Eksportuj CSV</button></div>`)}
+  <div id="verify-result" style="margin-bottom:16px;"></div>
+  <section class="panel"><div class="panel-head"><h2>Zdarzenia</h2><div class="filters" style="flex-wrap:wrap;gap:8px;">
+    <input type="search" id="log-user" placeholder="Użytkownik…" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;">
+    <select id="log-action"><option value="">Wszystkie akcje</option>${actions.map(a => `<option value="${a}">${a}</option>`).join('')}</select>
+    <input type="date" id="log-from" title="Od daty" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;">
+    <input type="date" id="log-to" title="Do daty" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;">
+    <button class="btn secondary small" id="log-filter-btn">Filtruj</button>
+  </div></div><div class="table-scroll"><table><thead><tr><th>ID</th><th>Czas (UTC)</th><th>Użytkownik</th><th>IP</th><th>Akcja</th><th>Opis</th><th>Wynik</th></tr></thead><tbody id="log-rows"></tbody></table></div></section>${footer()}`;
+  const load = async () => {
+    const q = new URLSearchParams();
+    if ($('#log-user').value.trim()) q.set('user', $('#log-user').value.trim());
+    if ($('#log-action').value) q.set('action', $('#log-action').value);
+    if ($('#log-from').value) q.set('from', $('#log-from').value);
+    if ($('#log-to').value) q.set('to', $('#log-to').value);
+    const rows = await api('/admin/logs' + (q.toString() ? `?${q}` : ''));
+    $('#log-rows').innerHTML = rows.map(r => `<tr><td>${r.id}</td><td><small>${esc(r.timestamp)}</small></td><td><strong>${esc(r.user)}</strong></td><td><small>${esc(r.ip)}</small></td><td><span class="role">${esc(r.action)}</span></td><td>${esc(r.description)}</td><td><span class="status ${r.result === 'sukces' ? '' : 'blocked'}">${esc(r.result)}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Brak wpisów.</td></tr>';
+  };
+  $('#log-filter-btn').onclick = load;
+  await load();
 }
 function openModal(title, body) { modal.innerHTML = `<div class="modal-head"><h2 id="modal-title">${title}</h2><button class="icon-btn" data-action="close-modal" aria-label="Zamknij">${icon('close')}</button></div><div class="modal-body">${body}</div>`; if (!modal.open) modal.showModal(); }
 function userModal(u) {
@@ -182,13 +210,31 @@ document.addEventListener('click', async e => {
     if (action === 'logout') { await api('/logout','POST'); state = null; clearTimeout(idleTimer); renderLogin(); toast('Wylogowano bezpiecznie.'); }
     if (action === 'add-user') userModal();
     if (action === 'edit-user') userModal(u);
-    if (action === 'block-user') { await api(`/admin/users/${id}`,'PUT',{ ...u, blocked: !u.blocked }); toast(u.blocked ? 'Odblokowano konto.' : 'Zablokowano konto i zakończono jego sesje.'); await renderUsers(); }
-    if (action === 'delete-user') confirmModal('Usuń użytkownika', `Usunąć konto <strong>${esc(u.login)}</strong>? Tej operacji nie można cofnąć.`, async () => { await api(`/admin/users/${id}`,'DELETE'); modal.close(); toast('Usunięto konto.'); await renderUsers(); }, 'Usuń konto');
+    if (action === 'block-user') { await api(`/admin/users/${id}`,'PUT',{ ...u, blocked: !u.blocked }); toast(u.blocked ? 'Odblokowano konto.' : 'Zablokowano konto i zakończono jego sesje.'); await renderShell(); }
+    if (action === 'delete-user') confirmModal('Usuń użytkownika', `Usunąć konto <strong>${esc(u.login)}</strong>? Tej operacji nie można cofnąć.`, async () => { await api(`/admin/users/${id}`,'DELETE'); modal.close(); toast('Usunięto konto.'); await renderShell(); }, 'Usuń konto');
     if (action === 'reset-user') confirmModal('Reset hasła', `Wygenerować nowe hasło jednorazowe dla <strong>${esc(u.login)}</strong>? Obecne hasło i sesje przestaną działać.`, async () => { credentials(await api(`/admin/users/${id}/reset`,'POST')); await renderUsers(); }, 'Resetuj hasło');
     if (action === 'add-note') noteModal();
     if (action === 'edit-note') noteModal(n);
     if (action === 'delete-note') confirmModal('Usuń notatkę', `Usunąć notatkę <strong>${esc(n.title)}</strong>?`, async () => { await api(`/notes/${id}`,'DELETE'); modal.close(); await renderNotes(); }, 'Usuń notatkę');
     if (action === 'publish-note') { await api(`/notes/${id}/publish`,'POST',{ published: !n.published }); await renderNotes(); toast(n.published ? 'Cofnięto publikację.' : 'Opublikowano notatkę.'); }
+    if (action === 'verify-logs') {
+      const r = await api('/admin/logs/verify', 'POST');
+      const box = $('#verify-result');
+      box.style.cssText = r.valid ? 'background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:12px 16px;border-radius:10px;' : 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;border-radius:10px;';
+      box.innerHTML = r.valid ? `<strong>Dziennik nienaruszony.</strong> Zweryfikowano ${r.checked} wpisów (łańcuch SHA-512 poprawny).` : `<strong>Wykryto ingerencję!</strong> Problem w wpisie #${r.corruptedId}: ${esc(r.reason)}`;
+      await renderLogs();
+      $('#verify-result').style.cssText = box.style.cssText;
+      $('#verify-result').innerHTML = box.innerHTML;
+    }
+    if (action === 'export-logs') {
+      const q = new URLSearchParams();
+      if ($('#log-user')?.value.trim()) q.set('user', $('#log-user').value.trim());
+      if ($('#log-action')?.value) q.set('action', $('#log-action').value);
+      if ($('#log-from')?.value) q.set('from', $('#log-from').value);
+      if ($('#log-to')?.value) q.set('to', $('#log-to').value);
+      window.location.href = '/api/admin/logs/export' + (q.toString() ? `?${q}` : '');
+    }
+    if (action === 'ack-alert') { await api(`/admin/alerts/${id}/ack`, 'POST'); await renderShell(); }
   } catch(error) { toast(error.message, true); }
 });
 async function init() {
